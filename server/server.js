@@ -6,6 +6,20 @@
 
 require('dotenv').config();
 
+const dns = require('dns');
+
+// Force Node.js to use Cloudflare DNS instead of localhost
+dns.setServers(['1.1.1.1', '1.0.0.1']);
+
+console.log('DNS Servers:', dns.getServers());
+
+dns.resolveSrv('_mongodb._tcp.projects.ppkhk8d.mongodb.net', (err, records) => {
+  console.log('SRV Test Error:', err);
+  console.log('SRV Records:', records);
+});
+
+
+
 const express      = require('express');
 const http         = require('http');
 const { Server }   = require('socket.io');
@@ -92,15 +106,53 @@ const messageSchema = new mongoose.Schema({
   from:      { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   to:        { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   content:   { type: String, required: true },
-  type:      { type: String, enum: ['text','sign','voice'], default: 'text' },
+  type:      { type: String, enum: ['text','sign','voice','image','file'], default: 'text' },
   signLabel: { type: String, default: '' },
   read:      { type: Boolean, default: false },
   timestamp: { type: Date, default: Date.now },
 }, { versionKey: false });
 
-const User    = mongoose.model('User',    userSchema);
-const Contact = mongoose.model('Contact', contactSchema);
-const Message = mongoose.model('Message', messageSchema);
+const followSchema = new mongoose.Schema({
+  followerId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  followingId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  createdAt:   { type: Date, default: Date.now },
+}, { versionKey: false });
+followSchema.index({ followerId: 1, followingId: 1 }, { unique: true });
+
+const postSchema = new mongoose.Schema({
+  authorId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  content:   { type: String, default: '' },
+  type:      { type: String, enum: ['text','image','sign'], default: 'text' },
+  signLabel: { type: String, default: '' },
+  imageUrl:  { type: String, default: '' },
+  likes:     [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  createdAt: { type: Date, default: Date.now },
+}, { versionKey: false });
+
+const commentSchema = new mongoose.Schema({
+  postId:    { type: mongoose.Schema.Types.ObjectId, ref: 'Post', required: true },
+  authorId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  content:   { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+}, { versionKey: false });
+
+const storySchema = new mongoose.Schema({
+  authorId:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  type:      { type: String, enum: ['text','image','sign'], default: 'text' },
+  content:   { type: String, default: '' },
+  imageUrl:  { type: String, default: '' },
+  signLabel: { type: String, default: '' },
+  expiresAt: { type: Date, required: true },
+  createdAt: { type: Date, default: Date.now },
+}, { versionKey: false });
+
+const User     = mongoose.model('User',     userSchema);
+const Contact  = mongoose.model('Contact',  contactSchema);
+const Message  = mongoose.model('Message',  messageSchema);
+const Follow   = mongoose.model('Follow',   followSchema);
+const Post     = mongoose.model('Post',     postSchema);
+const Comment  = mongoose.model('Comment',  commentSchema);
+const Story    = mongoose.model('Story',    storySchema);
 
 // ─────────────────────────────────────────────────────────────
 //  JWT HELPERS
@@ -408,6 +460,219 @@ app.get('/api/messages/unread/count', requireAuth, async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+//  SOCIAL MEDIA API ROUTES
+// ─────────────────────────────────────────────────────────────
+
+// ── FOLLOW/UNFOLLOW USER ──────────────────────────────────────
+app.post('/api/follow/:userId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    if (userId === String(req.user._id)) return res.status(400).json({ error: 'Cannot follow yourself' });
+    const target = await User.findById(userId);
+    if (!target) return res.status(404).json({ error: 'User not found' });
+    await Follow.findOneAndUpdate(
+      { followerId: req.user._id, followingId: userId },
+      { followerId: req.user._id, followingId: userId },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    return res.status(201).json({ message: 'Followed successfully' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to follow user' });
+  }
+});
+
+app.delete('/api/follow/:userId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    await Follow.deleteOne({ followerId: req.user._id, followingId: userId });
+    return res.json({ message: 'Unfollowed successfully' });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to unfollow user' });
+  }
+});
+
+app.get('/api/followers/:userId?', requireAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId || req.user._id;
+    const followers = await Follow.find({ followingId: userId }).populate('followerId');
+    return res.json({ followers: followers.map(f => f.followerId) });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get followers' });
+  }
+});
+
+app.get('/api/following/:userId?', requireAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId || req.user._id;
+    const following = await Follow.find({ followerId: userId }).populate('followingId');
+    return res.json({ following: following.map(f => f.followingId) });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get following' });
+  }
+});
+
+// ── POSTS ─────────────────────────────────────────────────────
+app.post('/api/posts', requireAuth, async (req, res) => {
+  try {
+    const { content, type, signLabel, imageUrl } = req.body;
+    const post = await Post.create({
+      authorId: req.user._id,
+      content: content || '',
+      type: type || 'text',
+      signLabel: signLabel || '',
+      imageUrl: imageUrl || '',
+    });
+    await post.populate('authorId');
+    return res.status(201).json({ post });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+app.get('/api/posts', requireAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    // Get followed users + self
+    const following = await Follow.find({ followerId: req.user._id }).select('followingId');
+    const followingIds = following.map(f => f.followingId);
+    followingIds.push(req.user._id);
+    const posts = await Post.find({ authorId: { $in: followingIds } })
+      .populate('authorId')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+    return res.json({ posts });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get posts' });
+  }
+});
+
+app.get('/api/posts/user/:userId', requireAuth, async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const posts = await Post.find({ authorId: userId })
+      .populate('authorId')
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+    return res.json({ posts });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get user posts' });
+  }
+});
+
+app.post('/api/posts/:postId/like', requireAuth, async (req, res) => {
+  try {
+    const postId = req.params.postId;
+    const post = await Post.findById(postId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    // Toggle like
+    if (post.likes.includes(req.user._id)) {
+      post.likes = post.likes.filter(id => String(id) !== String(req.user._id));
+    } else {
+      post.likes.push(req.user._id);
+    }
+    await post.save();
+    await post.populate('authorId');
+    return res.json({ post });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to like post' });
+  }
+});
+
+// ── COMMENTS ──────────────────────────────────────────────────
+app.post('/api/posts/:postId/comments', requireAuth, async (req, res) => {
+  try {
+    const postId = req.params.postId;
+    const { content } = req.body;
+    if (!content) return res.status(400).json({ error: 'Comment content required' });
+    const post = await Post.findById(postId);
+    if (!post) return res.status(404).json({ error: 'Post not found' });
+    const comment = await Comment.create({
+      postId,
+      authorId: req.user._id,
+      content,
+    });
+    await comment.populate('authorId');
+    return res.status(201).json({ comment });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create comment' });
+  }
+});
+
+app.get('/api/posts/:postId/comments', requireAuth, async (req, res) => {
+  try {
+    const postId = req.params.postId;
+    const comments = await Comment.find({ postId }).populate('authorId').sort({ createdAt: -1 });
+    return res.json({ comments });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get comments' });
+  }
+});
+
+// ── STORIES ───────────────────────────────────────────────────
+app.post('/api/stories', requireAuth, async (req, res) => {
+  try {
+    const { type, content, imageUrl, signLabel } = req.body;
+    // Expires in 24 hours
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const story = await Story.create({
+      authorId: req.user._id,
+      type: type || 'text',
+      content: content || '',
+      imageUrl: imageUrl || '',
+      signLabel: signLabel || '',
+      expiresAt,
+    });
+    await story.populate('authorId');
+    return res.status(201).json({ story });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to create story' });
+  }
+});
+
+app.get('/api/stories', requireAuth, async (req, res) => {
+  try {
+    const now = new Date();
+    // Get followed users + self
+    const following = await Follow.find({ followerId: req.user._id }).select('followingId');
+    const followingIds = following.map(f => f.followingId);
+    followingIds.push(req.user._id);
+    const stories = await Story.find({
+      authorId: { $in: followingIds },
+      expiresAt: { $gt: now }
+    })
+      .populate('authorId')
+      .sort({ createdAt: -1 });
+    return res.json({ stories });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to get stories' });
+  }
+});
+
+// ── EXPLORE / DISCOVER USERS ─────────────────────────────────
+app.get('/api/explore', requireAuth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const q = String(req.query.q || '').trim();
+    const query = q
+      ? { $or: [{ name: new RegExp(q, 'i') }, { username: new RegExp(q, 'i') }], _id: { $ne: req.user._id } }
+      : { _id: { $ne: req.user._id } };
+    const users = await User.find(query)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+    return res.json({ users });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to explore users' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────
 //  STATIC FILES  — AFTER all API routes
 // ─────────────────────────────────────────────────────────────
 const FRONTEND_DIR = path.join(__dirname, '..');
@@ -470,6 +735,25 @@ io.on('connection', async (socket) => {
   broadcastPresence(user._id.toString(), true);
 
   // ── Call room ───────────────────────────────────────────────
+  // Ring a contact before they join the room
+  socket.on('call:ring', ({ contactId, roomId, callerName, callMode }) => {
+    const targetSid = onlineUsers.get(contactId);
+    console.log(`[ring] ${user.name} → ${contactId} (socket: ${targetSid})`);
+    if (targetSid) {
+      io.to(targetSid).emit('call:incoming', {
+        roomId,
+        callMode: callMode || 'video',
+        caller: { id: user._id.toString(), name: user.name, avatarColor: user.avatarColor },
+      });
+    }
+  });
+
+  socket.on('call:reject', ({ contactId, roomId }) => {
+    const targetSid = onlineUsers.get(contactId);
+    if (targetSid) io.to(targetSid).emit('call:rejected', { roomId });
+    console.log(`[ring] ${user.name} rejected call in room ${roomId}`);
+  });
+
   socket.on('join-room', ({ roomId }) => {
     if (!roomId) return;
     const prev = socketMeta.get(socket.id);

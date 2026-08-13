@@ -112,6 +112,36 @@
 <!-- Socket.io client — loaded from our own server at runtime -->
 <script src="/socket.io/socket.io.js"></script>
 
+<!-- Unlock audio context on first user gesture (required on iOS/Android) -->
+<script>
+(function() {
+  function unlockAudio() {
+    // Create a silent AudioContext and resume it
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      window._ttsAudioCtx = ctx;
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      ctx.resume();
+    } catch(e) {}
+    // Also warm up speechSynthesis
+    if (window.speechSynthesis) {
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+      window.speechSynthesis.cancel();
+    }
+    document.removeEventListener('touchstart', unlockAudio);
+    document.removeEventListener('click', unlockAudio);
+  }
+  document.addEventListener('touchstart', unlockAudio, { once: true });
+  document.addEventListener('click',      unlockAudio, { once: true });
+})();
+</script>
+
 <!-- MediaPipe Hands from CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>

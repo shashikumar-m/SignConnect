@@ -231,7 +231,76 @@ const API = (() => {
     },
   };
 
-  return { Auth, Users, Contacts, Messages, Format, getToken, isLoggedIn };
+  // ══════════════════════════════════════════════════════════════
+  //  SOCIAL MEDIA - Follow, Posts, Comments, Stories, Explore
+  // ══════════════════════════════════════════════════════════════
+  const Follow = {
+    async follow(userId) {
+      await post(`/api/follow/${userId}`);
+    },
+    async unfollow(userId) {
+      await del(`/api/follow/${userId}`);
+    },
+    async getFollowers(userId) {
+      const data = await get(userId ? `/api/followers/${userId}` : '/api/followers');
+      return data.followers || [];
+    },
+    async getFollowing(userId) {
+      const data = await get(userId ? `/api/following/${userId}` : '/api/following');
+      return data.following || [];
+    },
+  };
+
+  const Posts = {
+    async create(data) {
+      const res = await post('/api/posts', data);
+      return res.post;
+    },
+    async getFeed(page = 1) {
+      const data = await get(`/api/posts?page=${page}`);
+      return data.posts || [];
+    },
+    async getUserPosts(userId, page = 1) {
+      const data = await get(`/api/posts/user/${userId}?page=${page}`);
+      return data.posts || [];
+    },
+    async toggleLike(postId) {
+      const res = await post(`/api/posts/${postId}/like`);
+      return res.post;
+    },
+  };
+
+  const Comments = {
+    async create(postId, content) {
+      const res = await post(`/api/posts/${postId}/comments`, { content });
+      return res.comment;
+    },
+    async getForPost(postId) {
+      const data = await get(`/api/posts/${postId}/comments`);
+      return data.comments || [];
+    },
+  };
+
+  const Stories = {
+    async create(data) {
+      const res = await post('/api/stories', data);
+      return res.story;
+    },
+    async get() {
+      const data = await get('/api/stories');
+      return data.stories || [];
+    },
+  };
+
+  const Explore = {
+    async getUsers(query = '', page = 1) {
+      const q = query ? `&q=${encodeURIComponent(query)}` : '';
+      const data = await get(`/api/explore?page=${page}${q}`);
+      return data.users || [];
+    },
+  };
+
+  return { Auth, Users, Contacts, Messages, Follow, Posts, Comments, Stories, Explore, Format, getToken, isLoggedIn };
 
 })();
 

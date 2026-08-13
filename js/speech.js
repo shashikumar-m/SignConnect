@@ -153,22 +153,40 @@ const SpeechEngine = (() => {
     if (!TTS || !ttsEnabled || !text) return;
     TTS.cancel(); // stop any current speech
 
+    // Mobile browsers require audio context to be unlocked by a user gesture.
+    // We attempt to resume it here — safe to call even on desktop.
+    try {
+      if (window._ttsAudioCtx && window._ttsAudioCtx.state === 'suspended') {
+        window._ttsAudioCtx.resume();
+      }
+    } catch {}
+
     const utt = new SpeechSynthesisUtterance(text);
     utt.lang   = options.lang   || ttsLang;
     utt.rate   = options.rate   || ttsRate;
     utt.pitch  = options.pitch  || ttsPitch;
-    utt.volume = options.volume || ttsVolume;
+    utt.volume = options.volume !== undefined ? options.volume : ttsVolume;
 
     // Select a voice that matches the language
-    const preferredVoice = voices.find(v =>
-      v.lang.startsWith(utt.lang.slice(0,2)) && v.localService
-    ) || voices.find(v => v.lang.startsWith(utt.lang.slice(0,2)));
+    // Prefer a local (on-device) voice for lower latency
+    const langCode = utt.lang.slice(0, 2);
+    const preferredVoice =
+      voices.find(v => v.lang.startsWith(langCode) && v.localService) ||
+      voices.find(v => v.lang.startsWith(langCode));
 
     if (preferredVoice) utt.voice = preferredVoice;
-    if (ttsVoice) utt.voice = ttsVoice;
-    if (options.voice) utt.voice = options.voice;
+    if (ttsVoice)       utt.voice = ttsVoice;
+    if (options.voice)  utt.voice = options.voice;
 
     if (options.onEnd) utt.onend = options.onEnd;
+
+    // On some mobile browsers speechSynthesis silently fails if voices
+    // haven't loaded yet. Retry once after a short delay.
+    if (voices.length === 0) {
+      loadVoices();
+      setTimeout(() => { if (TTS && text) TTS.speak(utt); }, 300);
+      return;
+    }
 
     TTS.speak(utt);
   }

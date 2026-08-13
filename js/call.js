@@ -276,10 +276,21 @@
 
     // ── Feature events from remote peer ───────────────────
     state.socket.on('sign_caption', ({ gesture, confidence, userName }) => {
+      // 1. Show animated bubble over remote video
       showRemoteSignCaption(gesture, confidence, userName);
+      // 2. Show in caption bar (same bar as speech captions) for clear reading
+      captionFinal.textContent = `✋ ${gesture}`;
+      captionBar.classList.remove('hidden');
+      setTimeout(() => {
+        if (captionFinal.textContent === `✋ ${gesture}`) {
+          captionFinal.textContent = '';
+          if (!captionInterim.textContent) captionBar.classList.add('hidden');
+        }
+      }, 4000);
+      // 3. Log to caption history
       addCaptionEntry('sign', gesture, userName);
-      // Speak remote sign out loud for hearing users
-      if (state.captionsOn) SpeechEngine.speak(gesture, { lang: 'en-US', rate: 0.9 });
+      // 4. Speak it aloud on this device (person B hears the sign as voice)
+      SpeechEngine.speak(gesture, { lang: 'en-US', rate: 0.85, pitch: 1.1 });
     });
 
     state.socket.on('speech_caption', ({ text, isFinal, userName }) => {
@@ -467,21 +478,31 @@
     });
     state.handsInstance.setOptions({
       maxNumHands:            1,
-      modelComplexity:        1,
-      minDetectionConfidence: 0.65,
-      minTrackingConfidence:  0.55,
+      modelComplexity:        0,   // 0 = lite model, faster on all devices
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence:  0.5,
     });
     state.handsInstance.onResults(onLocalHandResults);
 
-    state.cameraUtil = new Camera(localVideo, {
-      onFrame: async () => {
-        if (!state.signDetectOn || !state.localCam) return;
-        if (!localVideo.srcObject) return;
-        await state.handsInstance.send({ image: localVideo });
-      },
-      width: 640, height: 480,
-    });
-    state.cameraUtil.start();
+    // Use rAF instead of Camera utility — avoids conflict with WebRTC stream
+    // and works correctly on both laptop and mobile.
+    let rafActive = true;
+    state._signRafActive = () => rafActive;
+    state._signRafStop   = () => { rafActive = false; };
+
+    const detectLoop = async () => {
+      if (!rafActive) return;
+      if (state.signDetectOn && state.localCam &&
+          localVideo.srcObject && localVideo.readyState >= 2 &&
+          !localVideo.paused) {
+        try {
+          await state.handsInstance.send({ image: localVideo });
+        } catch {}
+      }
+      // ~15 fps is plenty for gesture detection and doesn't overload CPU
+      setTimeout(() => { if (rafActive) requestAnimationFrame(detectLoop); }, 66);
+    };
+    requestAnimationFrame(detectLoop);
   }
 
   function onLocalHandResults(results) {
@@ -517,9 +538,9 @@
 
     // Emit confirmed gesture to remote peer via server
     if (result.emit && result.name && result.name !== '…') {
-      // Show locally
+      // Show locally (caption only — NO local TTS, sound plays on remote side)
       addCaptionEntry('sign', result.name, 'You');
-      // Send to remote peer
+      // Send to remote peer — they will speak it on their device
       if (state.socket && state.socket.connected) {
         state.socket.emit('sign_caption', {
           roomId,
@@ -528,8 +549,7 @@
           userName:   currentUser.name,
         });
       }
-      // TTS locally so hearing people in the same room can hear
-      SpeechEngine.speak(result.name, { lang: 'en-US', rate: 0.95 });
+      // DO NOT speak locally — the remote peer's device speaks it
     }
   }
 
@@ -732,7 +752,7 @@
     clearInterval(state.callTimer);
     stopSpeech();
     if (state.handsInstance) { try { state.handsInstance.close(); } catch {} }
-    if (state.cameraUtil)    { try { state.cameraUtil.stop(); }     catch {} }
+    if (state._signRafStop)  { state._signRafStop(); }
     if (state.peerConn)      { state.peerConn.close(); state.peerConn = null; }
     if (state.localStream)   { state.localStream.getTracks().forEach(t => t.stop()); }
     if (state.screenStream)  { state.screenStream.getTracks().forEach(t => t.stop()); }

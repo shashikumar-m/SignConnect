@@ -285,9 +285,18 @@ const UI = (() => {
   // ── Debounce ──────────────────────────────────────────────────
   const debounce = (fn, wait = 300) => {
     let timer;
-    return (...args) => {
+    return function(...args) {
       clearTimeout(timer);
-      timer = setTimeout(() => fn(...args), wait);
+      // Preserve the event target before setTimeout loses it
+      const ctx = this;
+      if (args[0] && args[0].target) {
+        // Clone the value so it's available after event pooling
+        const val = args[0].target.value;
+        const syntheticArg = { target: { value: val } };
+        timer = setTimeout(() => fn.apply(ctx, [syntheticArg, ...args.slice(1)]), wait);
+      } else {
+        timer = setTimeout(() => fn.apply(ctx, args), wait);
+      }
     };
   };
 

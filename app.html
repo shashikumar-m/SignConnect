@@ -16,7 +16,9 @@
   <!-- ── Nav Rail ─────────────────────────────────────────── -->
   <nav class="nav-rail" aria-label="App navigation">
     <div class="rail-logo" aria-hidden="true">✋</div>
+    <button class="rail-btn"        id="railFeed"     data-rail="feed"     title="Feed"      aria-label="Feed">📰</button>
     <button class="rail-btn active" id="railChats"    data-rail="chats"    title="Chats"     aria-label="Chats"    aria-current="page">💬</button>
+    <button class="rail-btn"        id="railExplore"  data-rail="explore"  title="Explore"   aria-label="Explore">🔍</button>
     <button class="rail-btn"        id="railContacts" data-rail="contacts" title="Contacts"  aria-label="Contacts">👥</button>
     <button class="rail-btn"        id="railSettings" data-rail="settings" title="Settings"  aria-label="Settings">⚙️</button>
     <div class="rail-spacer"></div>
@@ -45,96 +47,156 @@
     <div class="contacts-list" id="contactsList" role="list" aria-label="Conversations"></div>
   </aside>
 
-  <!-- ── Main chat area ────────────────────────────────────── -->
-  <main class="chat-area" id="chatArea" aria-label="Chat">
+  <!-- ── Main content area ────────────────────────────────────── -->
+  <main class="chat-area" id="chatArea" aria-label="Main Content">
 
-    <!-- Welcome screen -->
-    <div class="welcome-screen" id="welcomeScreen">
-      <div class="welcome-icon" aria-hidden="true">✋</div>
-      <h2 class="welcome-title">Welcome to SignConnect</h2>
-      <p class="welcome-desc">Select a contact to start chatting, or add someone new to begin a conversation.</p>
-      <button class="btn btn-primary mt-4" id="welcomeAddBtn">+ Add Your First Contact</button>
+    <!-- Feed Section -->
+    <div class="feed-section hidden" id="feedSection">
+      <header class="chat-header">
+        <div class="chat-header-info">
+          <div class="chat-header-name">Feed</div>
+          <div class="chat-header-sub">See what your friends are sharing</div>
+        </div>
+        <div class="chat-header-actions">
+          <button class="btn btn-secondary btn-sm" id="btnCreateStory">+ Story</button>
+          <button class="btn btn-primary btn-sm" id="btnCreatePost">+ New Post</button>
+        </div>
+      </header>
+      
+      <!-- Stories Bar -->
+      <div class="stories-bar" id="storiesBar" aria-label="Stories"></div>
+      
+      <!-- Posts Feed -->
+      <div class="feed-content" id="feedContent" role="log" aria-live="polite">
+        <div style="text-align:center;padding:20px;color:var(--color-text-3)">Loading feed...</div>
+      </div>
     </div>
 
-    <!-- Chat header -->
-    <header class="chat-header hidden" id="chatHeader" aria-label="Chat with contact">
-      <div class="contact-avatar-wrap" id="chatHeaderAvatarWrap">
-        <div class="avatar avatar-md" id="chatHeaderAvatar"></div>
-        <span class="contact-status status-dot" id="chatHeaderStatus"></span>
-      </div>
-      <div class="chat-header-info">
-        <div class="chat-header-name" id="chatHeaderName"></div>
-        <div class="chat-header-sub"  id="chatHeaderSub"></div>
-      </div>
-      <div class="chat-header-actions">
-        <button class="btn-icon call-btn" id="btnVideoCall" title="Video call" aria-label="Start video call">📹</button>
-        <button class="btn-icon call-btn" id="btnVoiceCall" title="Voice call"  aria-label="Start voice call">📞</button>
-        <button class="btn-icon" id="btnSearch" title="Search messages" aria-label="Search messages">🔍</button>
-        <button class="btn-icon" id="btnMore"   title="More options"    aria-label="More options">⋯</button>
-      </div>
-    </header>
-
-    <!-- Messages -->
-    <div class="messages-area hidden" id="messagesArea" role="log" aria-label="Messages" aria-live="polite"></div>
-
-    <!-- Sign detection panel -->
-    <div class="sign-panel" id="signPanel" aria-label="Sign language input">
-      <div class="sign-panel-header">
-        <span class="sign-panel-title"><span aria-hidden="true">🤟</span> Sign Language Input</span>
-        <div style="display:flex;gap:8px">
-          <button class="btn btn-secondary btn-sm" id="btnStartSign"  aria-label="Start camera">Start Camera</button>
-          <button class="btn btn-secondary btn-sm" id="btnStopSign"   aria-label="Stop camera" disabled>Stop</button>
-          <button class="btn-icon btn-sm"          id="btnCloseSign"  aria-label="Close panel">✕</button>
+    <!-- Explore Section -->
+    <div class="explore-section hidden" id="exploreSection">
+      <header class="chat-header">
+        <div class="chat-header-info">
+          <div class="chat-header-name">Explore</div>
+          <div class="chat-header-sub">Discover new people</div>
         </div>
+        <div class="search-box" style="margin-left:auto;max-width:300px">
+          <span class="search-icon" aria-hidden="true">🔍</span>
+          <input class="search-input" type="search" id="exploreSearch" placeholder="Search users…" aria-label="Search users" autocomplete="off">
+        </div>
+      </header>
+      <div class="explore-content" id="exploreContent" role="log" aria-live="polite"></div>
+    </div>
+
+    <!-- Chats Section -->
+    <div class="chats-section" id="chatsSection">
+      <!-- Welcome screen -->
+      <div class="welcome-screen" id="welcomeScreen">
+        <div class="welcome-icon" aria-hidden="true">✋</div>
+        <h2 class="welcome-title">Welcome to SignConnect</h2>
+        <p class="welcome-desc">Select a contact to start chatting, or add someone new to begin a conversation.</p>
+        <button class="btn btn-primary mt-4" id="welcomeAddBtn">+ Add Your First Contact</button>
       </div>
-      <div class="sign-body">
-        <div class="sign-video-wrap" id="signVideoWrap">
-          <video id="signVideo" autoplay playsinline muted aria-label="Your camera"></video>
-          <canvas id="signCanvas" aria-hidden="true"></canvas>
-          <div class="sign-status-overlay">
-            <div class="sign-gesture-label" id="signGestureLabel" aria-live="polite">Point camera at your hand</div>
-            <div class="sign-confidence" id="signConfidence" aria-label="Detection confidence">
-              <div class="confidence-bar" style="width:80px">
-                <div class="confidence-fill" id="signConfFill" style="width:0%"></div>
+
+      <!-- Chat header -->
+      <header class="chat-header hidden" id="chatHeader" aria-label="Chat with contact">
+        <div class="contact-avatar-wrap" id="chatHeaderAvatarWrap">
+          <div class="avatar avatar-md" id="chatHeaderAvatar"></div>
+          <span class="contact-status status-dot" id="chatHeaderStatus"></span>
+        </div>
+        <div class="chat-header-info">
+          <div class="chat-header-name" id="chatHeaderName"></div>
+          <div class="chat-header-sub"  id="chatHeaderSub"></div>
+        </div>
+        <div class="chat-header-actions">
+          <button class="btn-icon call-btn" id="btnVideoCall" title="Video call" aria-label="Start video call">📹</button>
+          <button class="btn-icon call-btn" id="btnVoiceCall" title="Voice call"  aria-label="Start voice call">📞</button>
+          <button class="btn-icon" id="btnSearch" title="Search messages" aria-label="Search messages">🔍</button>
+          <button class="btn-icon" id="btnMore"   title="More options"    aria-label="More options">⋯</button>
+        </div>
+      </header>
+
+      <!-- Messages -->
+      <div class="messages-area hidden" id="messagesArea" role="log" aria-label="Messages" aria-live="polite"></div>
+
+      <!-- Sign detection panel -->
+      <div class="sign-panel" id="signPanel" aria-label="Sign language input">
+        <div class="sign-panel-header">
+          <span class="sign-panel-title"><span aria-hidden="true">🤟</span> Sign Language Input</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" id="btnStartSign"  aria-label="Start camera">Start Camera</button>
+            <button class="btn btn-secondary btn-sm" id="btnStopSign"   aria-label="Stop camera" disabled>Stop</button>
+            <button class="btn-icon btn-sm"          id="btnCloseSign"  aria-label="Close panel">✕</button>
+          </div>
+        </div>
+        <div class="sign-body">
+          <div class="sign-video-wrap" id="signVideoWrap">
+            <video id="signVideo" autoplay playsinline muted aria-label="Your camera"></video>
+            <canvas id="signCanvas" aria-hidden="true"></canvas>
+            <div class="sign-status-overlay">
+              <div class="sign-gesture-label" id="signGestureLabel" aria-live="polite">Point camera at your hand</div>
+              <div class="sign-confidence" id="signConfidence" aria-label="Detection confidence">
+                <div class="confidence-bar" style="width:80px">
+                  <div class="confidence-fill" id="signConfFill" style="width:0%"></div>
+                </div>
+                <span id="signConfPct">0%</span>
               </div>
-              <span id="signConfPct">0%</span>
+            </div>
+          </div>
+          <div class="sign-controls">
+            <div>
+              <div class="confidence-label">Detected words (click to remove)</div>
+              <div class="sign-word-queue" id="signWordQueue" role="log" aria-label="Detected words" aria-live="polite"></div>
+            </div>
+            <div class="sign-actions">
+              <button class="btn btn-secondary btn-sm w-full" id="btnClearSign">Clear</button>
+              <button class="btn btn-primary w-full" id="btnSendSign" disabled>Send as Sign Message</button>
             </div>
           </div>
         </div>
-        <div class="sign-controls">
-          <div>
-            <div class="confidence-label">Detected words (click to remove)</div>
-            <div class="sign-word-queue" id="signWordQueue" role="log" aria-label="Detected words" aria-live="polite"></div>
-          </div>
-          <div class="sign-actions">
-            <button class="btn btn-secondary btn-sm w-full" id="btnClearSign">Clear</button>
-            <button class="btn btn-primary w-full" id="btnSendSign" disabled>Send as Sign Message</button>
-          </div>
-        </div>
       </div>
-    </div>
 
-    <!-- Message input bar -->
-    <div class="input-bar hidden" id="inputBar">
-      <div class="input-actions-left">
-        <div class="relative">
-          <button class="btn-icon" id="btnEmojiToggle" title="Emoji" aria-label="Emoji picker" aria-haspopup="true" aria-expanded="false">😊</button>
-          <div class="emoji-picker" id="emojiPicker" role="dialog" aria-label="Emoji picker">
-            <div class="emoji-tabs" id="emojiTabs" role="tablist"></div>
-            <div class="emoji-search"><input type="search" id="emojiSearch" placeholder="Search emoji…" autocomplete="off" aria-label="Search emoji"/></div>
-            <div class="emoji-grid" id="emojiGrid" role="grid" aria-label="Emoji grid"></div>
+      <!-- Sign Display Panel (Speech → Sign) -->
+      <div class="sign-panel" id="signDisplayPanel" aria-label="Sign language display">
+        <div class="sign-panel-header">
+          <span class="sign-panel-title"><span aria-hidden="true">🎙️→🤟</span> Sign Language Display</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-secondary btn-sm" id="btnStartSpeech" aria-label="Start speech recognition">Listen</button>
+            <button class="btn btn-secondary btn-sm" id="btnStopSpeech" aria-label="Stop speech recognition" disabled>Stop</button>
+            <button class="btn-icon btn-sm" id="btnCloseSignDisplay" aria-label="Close panel">✕</button>
           </div>
         </div>
-        <button class="btn-icon" id="btnSignToggle" title="Sign language input" aria-label="Sign language input" aria-pressed="false">🤟</button>
-        <button class="btn-icon" id="btnAttach" title="Attach file" aria-label="Attach file">📎</button>
+        <div class="sign-body">
+          <div class="sign-video-wrap" id="signDisplayWrap" style="display:flex;flex-direction:column;justify-content:center;align-items:center;padding:16px">
+            <div id="signAvatar" style="font-size:120px;line-height:1;transition:transform 0.3s ease;">🤖</div>
+            <div id="signDisplayLabel" class="sign-gesture-label" style="margin-top:12px;font-size:18px">Start listening to see signs</div>
+            <div id="signDisplayText" class="confidence-label" style="margin-top:8px;text-align:center;width:100%;color:var(--color-primary);font-weight:600"></div>
+          </div>
+        </div>
       </div>
-      <div class="input-wrap">
-        <textarea class="msg-input" id="msgInput" placeholder="Type a message…" rows="1"
-          aria-label="Message input" aria-multiline="true" autocomplete="off"
-          style="overflow-y:hidden"></textarea>
-      </div>
-      <div class="input-actions-right">
-        <button class="send-btn" id="btnSend" title="Send message" aria-label="Send message" disabled>➤</button>
+
+      <!-- Message input bar -->
+      <div class="input-bar hidden" id="inputBar">
+        <div class="input-actions-left">
+          <div class="relative">
+            <button class="btn-icon" id="btnEmojiToggle" title="Emoji" aria-label="Emoji picker" aria-haspopup="true" aria-expanded="false">😊</button>
+            <div class="emoji-picker" id="emojiPicker" role="dialog" aria-label="Emoji picker">
+              <div class="emoji-tabs" id="emojiTabs" role="tablist"></div>
+              <div class="emoji-search"><input type="search" id="emojiSearch" placeholder="Search emoji…" autocomplete="off" aria-label="Search emoji"/></div>
+              <div class="emoji-grid" id="emojiGrid" role="grid" aria-label="Emoji grid"></div>
+            </div>
+          </div>
+          <button class="btn-icon" id="btnSignToggle" title="Sign language input" aria-label="Sign language input" aria-pressed="false">🤟</button>
+          <button class="btn-icon" id="btnSignDisplayToggle" title="Sign language display (speech to sign)" aria-label="Sign language display" aria-pressed="false">🎙️</button>
+          <button class="btn-icon" id="btnAttach" title="Attach file" aria-label="Attach file">📎</button>
+        </div>
+        <div class="input-wrap">
+          <textarea class="msg-input" id="msgInput" placeholder="Type a message…" rows="1"
+            aria-label="Message input" aria-multiline="true" autocomplete="off"
+            style="overflow-y:hidden"></textarea>
+        </div>
+        <div class="input-actions-right">
+          <button class="send-btn" id="btnSend" title="Send message" aria-label="Send message" disabled>➤</button>
+        </div>
       </div>
     </div>
   </main>
@@ -179,6 +241,36 @@
       <textarea class="form-input" id="profileBio" rows="3" placeholder="Tell people about yourself…"></textarea>
     </div>
     <button class="btn btn-primary w-full" id="btnSaveProfile">Save Changes</button>
+  </div>
+</div>
+
+<!-- ── Create Post Modal ──────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="createPostModal" role="dialog" aria-modal="true" aria-labelledby="createPostTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="createPostTitle">Create New Post</h2>
+      <button class="modal-close" id="createPostClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">What's on your mind?</label>
+      <textarea class="form-input" id="postContent" rows="4" placeholder="Write something..."></textarea>
+    </div>
+    <button class="btn btn-primary w-full" id="btnSubmitPost">Post</button>
+  </div>
+</div>
+
+<!-- ── Create Story Modal ──────────────────────────────────────────── -->
+<div class="modal-backdrop hidden" id="createStoryModal" role="dialog" aria-modal="true" aria-labelledby="createStoryTitle">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 class="modal-title" id="createStoryTitle">Create New Story</h2>
+      <button class="modal-close" id="createStoryClose" aria-label="Close">&times;</button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">What's your story?</label>
+      <textarea class="form-input" id="storyContent" rows="4" placeholder="Share something that expires in 24h..."></textarea>
+    </div>
+    <button class="btn btn-primary w-full" id="btnSubmitStory">Share Story</button>
   </div>
 </div>
 
