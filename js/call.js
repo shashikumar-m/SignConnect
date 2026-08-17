@@ -276,21 +276,27 @@
 
     // ── Feature events from remote peer ───────────────────
     state.socket.on('sign_caption', ({ gesture, confidence, userName }) => {
-      // 1. Show animated bubble over remote video
+      if (!state.captionsOn) return;
+
+      // 1. Large animated subtitle on Person B's screen
       showRemoteSignCaption(gesture, confidence, userName);
-      // 2. Show in caption bar (same bar as speech captions) for clear reading
-      captionFinal.textContent = `✋ ${gesture}`;
+
+      // 2. Bottom caption bar — very visible text
+      captionFinal.textContent = `🤟 ${gesture}`;
       captionBar.classList.remove('hidden');
-      setTimeout(() => {
-        if (captionFinal.textContent === `✋ ${gesture}`) {
+      clearTimeout(state._signCaptionTimer);
+      state._signCaptionTimer = setTimeout(() => {
+        if (captionFinal.textContent === `🤟 ${gesture}`) {
           captionFinal.textContent = '';
           if (!captionInterim.textContent) captionBar.classList.add('hidden');
         }
-      }, 4000);
-      // 3. Log to caption history
+      }, 4500);
+
+      // 3. Caption history log
       addCaptionEntry('sign', gesture, userName);
-      // 4. Speak it aloud on this device (person B hears the sign as voice)
-      SpeechEngine.speak(gesture, { lang: 'en-US', rate: 0.85, pitch: 1.1 });
+
+      // 4. Speak the sign aloud on Person B's device
+      SpeechEngine.speak(gesture, { lang: 'en-US', rate: 0.85, pitch: 1.05, volume: 1.0 });
     });
 
     state.socket.on('speech_caption', ({ text, isFinal, userName }) => {
@@ -469,23 +475,38 @@
   //  STEP 4 — MediaPipe Sign Detection on LOCAL video
   // ══════════════════════════════════════════════════════════
   function startHandsDetection() {
-    if (typeof Hands === 'undefined') {
+    if (typeof Hands === 'undefined' && typeof Holistic === 'undefined') {
       UI.Toast.warning('MediaPipe not loaded — sign detection disabled.');
       return;
     }
-    state.handsInstance = new Hands({
-      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
-    });
-    state.handsInstance.setOptions({
-      maxNumHands:            1,
-      modelComplexity:        0,   // 0 = lite model, faster on all devices
-      minDetectionConfidence: 0.6,
-      minTrackingConfidence:  0.5,
-    });
-    state.handsInstance.onResults(onLocalHandResults);
 
-    // Use rAF instead of Camera utility — avoids conflict with WebRTC stream
-    // and works correctly on both laptop and mobile.
+    // Use Holistic if available (better for full-body signs), else Hands
+    const useHolistic = typeof Holistic !== 'undefined';
+
+    if (useHolistic) {
+      state.handsInstance = new Holistic({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
+      });
+      state.handsInstance.setOptions({
+        modelComplexity:        1,
+        smoothLandmarks:        true,
+        enableSegmentation:     false,
+        refineFaceLandmarks:    false,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence:  0.5,
+      });
+      state.handsInstance.onResults(onLocalHandResults);
+    } else {
+      state.handsInstance = new Hands({
+        locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}`
+      });
+      state.handsInstance.setOptions({
+        maxNumHands: 1, modelComplexity: 0,
+        minDetectionConfidence: 0.6, minTrackingConfidence: 0.5,
+      });
+      state.handsInstance.onResults(onLocalHandResults);
+    }
+
     let rafActive = true;
     state._signRafActive = () => rafActive;
     state._signRafStop   = () => { rafActive = false; };
@@ -493,13 +514,9 @@
     const detectLoop = async () => {
       if (!rafActive) return;
       if (state.signDetectOn && state.localCam &&
-          localVideo.srcObject && localVideo.readyState >= 2 &&
-          !localVideo.paused) {
-        try {
-          await state.handsInstance.send({ image: localVideo });
-        } catch {}
+          localVideo.srcObject && localVideo.readyState >= 2 && !localVideo.paused) {
+        try { await state.handsInstance.send({ image: localVideo }); } catch {}
       }
-      // ~15 fps is plenty for gesture detection and doesn't overload CPU
       setTimeout(() => { if (rafActive) requestAnimationFrame(detectLoop); }, 66);
     };
     requestAnimationFrame(detectLoop);
@@ -509,47 +526,53 @@
     const ctx = localCanvas.getContext('2d');
     GestureEngine.clearCanvas(ctx, localCanvas.width, localCanvas.height);
 
-    if (!results.multiHandLandmarks?.length) {
-      localSignLabel.classList.remove('visible');
-      callConfidence.classList.remove('visible');
-      return;
+    // Build landmark object for GestureEngine
+    // Holistic gives results.poseLandmarks, results.leftHandLandmarks, results.rightHandLandmarks
+    // Hands gives results.multiHandLandmarks[0]
+    const isHolistic = results.poseLandmarks !== undefined;
+    let landmarks;
+
+    if (isHolistic) {
+      landmarks = {
+        pose:      results.poseLandmarks || null,
+        leftHand:  results.leftHandLandmarks  || null,
+        rightHand: results.rightHandLandmarks || null,
+      };
+      // Draw hand skeleton on PiP
+      const drawLm = results.rightHandLandmarks || results.leftHandLandmarks;
+      if (drawLm) GestureEngine.drawHandOnCanvas(ctx, drawLm, localCanvas.width, localCanvas.height, true);
+    } else {
+      if (!results.multiHandLandmarks?.length) {
+        localSignLabel.classList.remove('visible');
+        callConfidence.classList.remove('visible');
+        return;
+      }
+      landmarks = results.multiHandLandmarks[0];
+      GestureEngine.drawHandOnCanvas(ctx, landmarks, localCanvas.width, localCanvas.height, true);
     }
 
-    const lm = results.multiHandLandmarks[0];
-    // Draw skeleton on local PiP canvas
-    GestureEngine.drawHandOnCanvas(ctx, lm, localCanvas.width, localCanvas.height, true);
-
-    const result = GestureEngine.processFrame(lm);
+    const result = GestureEngine.processFrame(landmarks);
     if (!result) return;
 
-    // Update confidence meter
     const pct = Math.round(result.confidence * 100);
     callConfFill.style.width = pct + '%';
     callConfPct.textContent  = pct + '%';
     callConfidence.classList.toggle('visible', result.confidence > 0.3);
 
-    // Update local PiP label
-    if (result.name && result.name !== '…') {
+    if (result.name && result.name !== '...') {
       localSignLabel.textContent = `✋ ${result.name}`;
       localSignLabel.classList.add('visible');
     } else {
       localSignLabel.classList.remove('visible');
     }
 
-    // Emit confirmed gesture to remote peer via server
-    if (result.emit && result.name && result.name !== '…') {
-      // Show locally (caption only — NO local TTS, sound plays on remote side)
+    if (result.emit && result.name && result.name !== '...') {
       addCaptionEntry('sign', result.name, 'You');
-      // Send to remote peer — they will speak it on their device
       if (state.socket && state.socket.connected) {
         state.socket.emit('sign_caption', {
-          roomId,
-          gesture:    result.name,
-          confidence: pct,
-          userName:   currentUser.name,
+          roomId, gesture: result.name, confidence: pct, userName: currentUser.name,
         });
       }
-      // DO NOT speak locally — the remote peer's device speaks it
     }
   }
 

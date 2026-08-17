@@ -30,3 +30,8 @@ pm2.log
 # ── Build artifacts ───────────────────────────────────────────────
 dist/
 build/
+
+
+flutter-app/build/
+frontend/node_modules/
+ml-server/asl_dataset/asl_alphabet_train/

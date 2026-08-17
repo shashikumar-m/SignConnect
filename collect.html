@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SignConnect — Sign Data Collector</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0f1117;color:#e8eaf0;font-family:'Segoe UI',sans-serif;min-height:100vh;padding:20px}
+  h1{color:#4f8ef7;font-size:1.5rem;margin-bottom:4px}
+  .sub{color:#9aa3b8;font-size:0.85rem;margin-bottom:20px}
+  .layout{display:grid;grid-template-columns:340px 1fr;gap:20px;max-width:1100px;margin:0 auto}
+  .panel{background:#1e2535;border-radius:12px;padding:16px}
+  .panel h2{font-size:1rem;margin-bottom:12px;color:#a78bfa}
+
+  /* Camera */
+  .cam-wrap{position:relative;background:#000;border-radius:10px;overflow:hidden;aspect-ratio:4/3}
+  #video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+  #canvas{position:absolute;inset:0;width:100%;height:100%;transform:scaleX(-1)}
+  .rec-badge{position:absolute;top:10px;left:10px;background:#f87171;color:#fff;
+    font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;display:none}
+  .rec-badge.show{display:block;animation:blink 0.8s infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}
+  .count-badge{position:absolute;top:10px;right:10px;background:rgba(0,0,0,0.7);
+    color:#34d399;font-size:14px;font-weight:700;padding:4px 10px;border-radius:20px}
+
+  /* Form */
+  label{display:block;font-size:0.8rem;color:#9aa3b8;margin-bottom:4px;margin-top:12px}
+  input[type=text]{width:100%;background:#111827;border:1px solid #2d3650;
+    border-radius:8px;padding:10px 12px;color:#e8eaf0;font-size:0.95rem;outline:none}
+  input[type=text]:focus{border-color:#4f8ef7}
+  input[type=range]{width:100%;accent-color:#4f8ef7}
+
+  .btn{display:block;width:100%;padding:11px;border:none;border-radius:8px;
+    font-size:0.95rem;font-weight:600;cursor:pointer;margin-top:10px;transition:all 0.2s}
+  .btn-rec{background:#4f8ef7;color:#fff}
+  .btn-rec:hover{background:#3a72d8}
+  .btn-rec:disabled{background:#2d3650;color:#5c6780;cursor:not-allowed}
+  .btn-del{background:#2d1a1a;color:#f87171;border:1px solid #f87171}
+  .btn-del:hover{background:#3d1a1a}
+  .btn-export{background:#14532d;color:#34d399;border:1px solid #34d399;margin-top:16px}
+  .btn-export:hover{background:#166534}
+  .btn-export:disabled{background:#1c2533;color:#3a4a5c;border-color:#2d3650;cursor:not-allowed}
+
+  /* Sample list */
+  .sample-list{max-height:300px;overflow-y:auto;margin-top:8px}
+  .sample-item{display:flex;align-items:center;justify-content:space-between;
+    padding:6px 10px;background:#111827;border-radius:6px;margin-bottom:4px;font-size:0.82rem}
+  .sample-label{color:#4f8ef7;font-weight:600}
+  .sample-count{color:#34d399}
+  .del-btn{background:none;border:none;color:#f87171;cursor:pointer;font-size:1rem;padding:0 4px}
+
+  /* Status */
+  .status{margin-top:10px;padding:10px;border-radius:8px;font-size:0.85rem;text-align:center;
+    background:#111827;color:#9aa3b8;min-height:40px;display:flex;align-items:center;justify-content:center}
+  .status.ok{background:#0a2e1c;color:#34d399}
+  .status.err{background:#2a1010;color:#f87171}
+  .status.rec{background:#1a1a3a;color:#4f8ef7}
+
+  /* Progress bar */
+  .prog-wrap{background:#111827;border-radius:4px;height:6px;margin-top:8px;overflow:hidden}
+  .prog-bar{height:100%;background:#4f8ef7;width:0%;transition:width 0.1s;border-radius:4px}
+
+  /* Stats */
+  .stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+  .stat{background:#111827;border-radius:8px;padding:10px;text-align:center}
+  .stat-val{font-size:1.4rem;font-weight:700;color:#4f8ef7}
+  .stat-lbl{font-size:0.75rem;color:#9aa3b8}
+</style>
+</head>
+<body>
+
+<div style="max-width:1100px;margin:0 auto">
+  <h1>✋ Sign Data Collector</h1>
+  <p class="sub">Record your own signs to train a custom gesture model. Type the word, show the sign, click Record.</p>
+
+  <div class="layout">
+
+    <!-- LEFT: Camera + controls -->
+    <div>
+      <div class="cam-wrap">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="canvas"></canvas>
+        <div class="rec-badge" id="recBadge">● REC</div>
+        <div class="count-badge" id="countBadge">0 frames</div>
+      </div>
+
+      <div class="panel" style="margin-top:12px">
+        <h2>Record a Sign</h2>
+
+        <label>Sign label (word/phrase)</label>
+        <input type="text" id="labelInput" placeholder="e.g. Hello, Water, Mother..." autocomplete="off"/>
+
+        <label>Frames to capture: <span id="framesVal">30</span></label>
+        <input type="range" id="framesInput" min="20" max="60" value="30"
+          oninput="document.getElementById('framesVal').textContent=this.value"/>
+
+        <label>Delay before recording (seconds): <span id="delayVal">2</span></label>
+        <input type="range" id="delayInput" min="1" max="5" value="2"
+          oninput="document.getElementById('delayVal').textContent=this.value"/>
+
+        <button class="btn btn-rec" id="btnRecord" disabled>⏺ Start Recording</button>
+        <div class="prog-wrap"><div class="prog-bar" id="progBar"></div></div>
+        <div class="status" id="status">Initialising camera...</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Recorded data -->
+    <div>
+      <div class="panel">
+        <h2>Recorded Samples</h2>
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-val" id="statWords">0</div><div class="stat-lbl">Signs</div></div>
+          <div class="stat"><div class="stat-val" id="statSamples">0</div><div class="stat-lbl">Total recordings</div></div>
+        </div>
+
+        <div class="sample-list" id="sampleList">
+          <div style="color:#5c6780;font-size:0.82rem;text-align:center;padding:20px">
+            No recordings yet. Start by typing a label and recording.
+          </div>
+        </div>
+
+        <button class="btn btn-export" id="btnExport" disabled>⬇ Export my_signs.json</button>
+
+        <!-- Import existing JSON to continue adding -->
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <label for="btnImport" class="btn" style="background:#1a2a3a;border:1px solid #4f8ef7;color:#4f8ef7;cursor:pointer;margin:0;flex:1;text-align:center;padding:9px">
+            📂 Import &amp; Merge
+          </label>
+          <input type="file" id="btnImport" accept=".json" style="display:none"/>
+          <button class="btn btn-del" id="btnClear" style="margin:0;flex:0 0 auto;padding:9px 14px">🗑</button>
+        </div>
+
+        <!-- Autosave indicator -->
+        <div id="autosaveInfo" style="margin-top:8px;font-size:0.75rem;color:#5c6780;text-align:center">
+          Auto-saved to browser storage
+        </div>
+
+      <div class="panel" style="margin-top:12px">
+        <h2>Instructions</h2>
+        <ol style="padding-left:18px;font-size:0.82rem;color:#9aa3b8;line-height:2">
+          <li>Type the word/sign name in the label box</li>
+          <li>Position your hand clearly in front of camera</li>
+          <li>Click <strong style="color:#4f8ef7">Start Recording</strong></li>
+          <li>Wait for countdown, then do the sign naturally</li>
+          <li>Repeat 30-60 times per sign for best accuracy</li>
+          <li>Use <strong style="color:#34d399">Export</strong> to save your data</li>
+          <li>Run: <code style="background:#111;padding:2px 6px;border-radius:4px">python ml-server/train_lstm.py</code></li>
+        </ol>
+
+        <div style="margin-top:12px;padding:10px;background:#111827;border-radius:8px;font-size:0.8rem;color:#9aa3b8">
+          <strong style="color:#fbbf24">Tip:</strong> For body signs (Mother, Father, Doctor), 
+          step back so your upper body is visible. For hand signs (A-Z), keep hand close to camera.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MediaPipe Holistic from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+'use strict';
+
+// ── State ──────────────────────────────────────────────────────────────────────
+const recordings = {};   // { label: [[frame0_225floats, ...], ...] }
+let holisticReady = false;
+let holistic      = null;
+let currentFrames = [];
+let isRecording   = false;
+let targetFrames  = 30;
+
+// ── DOM refs ───────────────────────────────────────────────────────────────────
+const video      = document.getElementById('video');
+const canvas     = document.getElementById('canvas');
+const ctx        = canvas.getContext('2d');
+const recBadge   = document.getElementById('recBadge');
+const countBadge = document.getElementById('countBadge');
+const statusEl   = document.getElementById('status');
+const progBar    = document.getElementById('progBar');
+const btnRecord  = document.getElementById('btnRecord');
+const labelInput = document.getElementById('labelInput');
+
+// ── Extract 225 features from Holistic results ─────────────────────────────────
+// Pose: landmarks 11-16 (shoulders, elbows, wrists) = 6×3 = 18
+// Left hand: 21×3 = 63
+// Right hand: 21×3 = 63
+// Total: 144 (without full 33 pose to keep it manageable)
+// Actually we use: pose 0-32 (33×3=99) + lh 21×3=63 + rh 21×3=63 = 225
+
+function extractFeatures(results) {
+  const feat = new Float32Array(225);
+  let i = 0;
+
+  // Pose (33 landmarks × 3)
+  if (results.poseLandmarks) {
+    for (const lm of results.poseLandmarks) {
+      feat[i++] = lm.x; feat[i++] = lm.y; feat[i++] = lm.z || 0;
+    }
+  } else { i += 99; }
+
+  // Left hand (21 × 3)
+  if (results.leftHandLandmarks) {
+    for (const lm of results.leftHandLandmarks) {
+      feat[i++] = lm.x; feat[i++] = lm.y; feat[i++] = lm.z || 0;
+    }
+  } else { i += 63; }
+
+  // Right hand (21 × 3)
+  if (results.rightHandLandmarks) {
+    for (const lm of results.rightHandLandmarks) {
+      feat[i++] = lm.x; feat[i++] = lm.y; feat[i++] = lm.z || 0;
+    }
+  } else { i += 63; }
+
+  return feat;
+}
+
+// ── MediaPipe Holistic setup ───────────────────────────────────────────────────
+function initHolistic() {
+  holistic = new Holistic({
+    locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${f}`
+  });
+  holistic.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    refineFaceLandmarks: false,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+  holistic.onResults(onResults);
+
+  const cam = new Camera(video, {
+    onFrame: async () => { await holistic.send({ image: video }); },
+    width: 640, height: 480,
+  });
+  cam.start();
+}
+
+function onResults(results) {
+  // Draw skeleton
+  canvas.width  = video.videoWidth  || 640;
+  canvas.height = video.videoHeight || 480;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw pose connections
+  if (results.poseLandmarks) {
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS,
+      { color: 'rgba(79,142,247,0.5)', lineWidth: 2 });
+    drawLandmarks(ctx, results.poseLandmarks,
+      { color: '#4f8ef7', lineWidth: 1, radius: 3 });
+  }
+  // Draw hands
+  if (results.leftHandLandmarks) {
+    drawConnectors(ctx, results.leftHandLandmarks, HAND_CONNECTIONS,
+      { color: 'rgba(52,211,153,0.8)', lineWidth: 2 });
+    drawLandmarks(ctx, results.leftHandLandmarks,
+      { color: '#34d399', lineWidth: 1, radius: 4 });
+  }
+  if (results.rightHandLandmarks) {
+    drawConnectors(ctx, results.rightHandLandmarks, HAND_CONNECTIONS,
+      { color: 'rgba(251,191,36,0.8)', lineWidth: 2 });
+    drawLandmarks(ctx, results.rightHandLandmarks,
+      { color: '#fbbf24', lineWidth: 1, radius: 4 });
+  }
+
+  if (!holisticReady) {
+    holisticReady = true;
+    btnRecord.disabled = false;
+    setStatus('Ready! Type a label and click Record.', 'ok');
+  }
+
+  // Capture frame if recording
+  if (isRecording) {
+    const feat = extractFeatures(results);
+    currentFrames.push(Array.from(feat));
+    countBadge.textContent = `${currentFrames.length}/${targetFrames} frames`;
+    progBar.style.width = `${(currentFrames.length/targetFrames)*100}%`;
+
+    if (currentFrames.length >= targetFrames) {
+      finishRecording();
+    }
+  }
+}
+
+// ── Recording logic ────────────────────────────────────────────────────────────
+btnRecord.addEventListener('click', async () => {
+  const label = labelInput.value.trim();
+  if (!label) { setStatus('Please enter a sign label first.', 'err'); return; }
+
+  targetFrames = parseInt(document.getElementById('framesInput').value);
+  const delay  = parseInt(document.getElementById('delayInput').value);
+
+  btnRecord.disabled = true;
+  currentFrames = [];
+
+  // Countdown
+  for (let i = delay; i > 0; i--) {
+    setStatus(`Get ready... ${i}`, 'rec');
+    await sleep(1000);
+  }
+  setStatus(`Recording "${label}" — do the sign now!`, 'rec');
+  recBadge.classList.add('show');
+  isRecording = true;
+});
+
+function finishRecording() {
+  isRecording = false;
+  recBadge.classList.remove('show');
+  progBar.style.width = '100%';
+
+  const label = labelInput.value.trim();
+  if (!recordings[label]) recordings[label] = [];
+  recordings[label].push(currentFrames);
+
+  const count = recordings[label].length;
+  setStatus(`Saved! "${label}" — ${count} recording${count>1?'s':''} total. Keep going!`, 'ok');
+
+  btnRecord.disabled = false;
+  updateStats();
+  renderSampleList();
+  autosave();   // <-- save to localStorage after every recording
+
+  document.getElementById('btnExport').disabled = false;
+  document.getElementById('btnClear').disabled  = false;
+}
+
+// ── UI helpers ─────────────────────────────────────────────────────────────────
+function setStatus(msg, type='') {
+  statusEl.textContent = msg;
+  statusEl.className = 'status ' + type;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function updateStats() {
+  const words   = Object.keys(recordings).length;
+  const samples = Object.values(recordings).reduce((s,v) => s+v.length, 0);
+  document.getElementById('statWords').textContent   = words;
+  document.getElementById('statSamples').textContent = samples;
+}
+
+function renderSampleList() {
+  const el = document.getElementById('sampleList');
+  if (!Object.keys(recordings).length) {
+    el.innerHTML = '<div style="color:#5c6780;font-size:0.82rem;text-align:center;padding:20px">No recordings yet.</div>';
+    return;
+  }
+  el.innerHTML = Object.entries(recordings)
+    .sort((a,b) => a[0].localeCompare(b[0]))
+    .map(([label, seqs]) => `
+      <div class="sample-item">
+        <span class="sample-label">${label}</span>
+        <span class="sample-count">${seqs.length} recordings × ${seqs[0]?.length||0} frames</span>
+        <button class="del-btn" onclick="deleteLabel('${label}')">✕</button>
+      </div>
+    `).join('');
+}
+
+window.deleteLabel = (label) => {
+  if (!confirm(`Delete all recordings for "${label}"?`)) return;
+  delete recordings[label];
+  updateStats();
+  renderSampleList();
+  autosave();
+  if (!Object.keys(recordings).length) {
+    document.getElementById('btnExport').disabled = true;
+    document.getElementById('btnClear').disabled  = true;
+  }
+};
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  if (!confirm('Delete ALL recordings? This also clears browser storage.')) return;
+  Object.keys(recordings).forEach(k => delete recordings[k]);
+  localStorage.removeItem(STORAGE_KEY);
+  updateStats();
+  renderSampleList();
+  document.getElementById('btnExport').disabled = true;
+  document.getElementById('btnClear').disabled  = true;
+  setStatus('All recordings cleared.', '');
+});
+
+// ── Export ─────────────────────────────────────────────────────────────────────
+document.getElementById('btnExport').addEventListener('click', () => {
+  const total = Object.values(recordings).reduce((s,v)=>s+v.length,0);
+  const data  = {
+    version:    2,
+    created:    new Date().toISOString(),
+    frameSize:  225,
+    labels:     Object.keys(recordings),
+    recordings: recordings,
+  };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = 'my_signs.json';
+  a.click();
+  setStatus(`Exported ${Object.keys(recordings).length} signs, ${total} recordings.`, 'ok');
+});
+
+// ── AutoSave & AutoLoad (localStorage) ────────────────────────────────────────
+const STORAGE_KEY = 'signconnect_recordings';
+
+function autosave() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(recordings));
+    const total = Object.values(recordings).reduce((s,v)=>s+v.length,0);
+    document.getElementById('autosaveInfo').textContent =
+      `Auto-saved ${Object.keys(recordings).length} signs, ${total} recordings`;
+  } catch(e) {
+    document.getElementById('autosaveInfo').textContent = 'Auto-save failed (storage full?)';
+  }
+}
+
+function autoload() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return;
+    const data = JSON.parse(saved);
+    Object.assign(recordings, data);
+    updateStats();
+    renderSampleList();
+    const total = Object.values(recordings).reduce((s,v)=>s+v.length,0);
+    if (total > 0) {
+      document.getElementById('btnExport').disabled = false;
+      document.getElementById('btnClear').disabled  = false;
+      setStatus(`Restored ${Object.keys(recordings).length} signs (${total} recordings) from last session.`, 'ok');
+    }
+  } catch(e) {
+    console.warn('Autoload failed:', e.message);
+  }
+}
+
+// Run autoload on page start
+autoload();
+
+// ── Import & Merge ─────────────────────────────────────────────────────────────
+document.getElementById('btnImport').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      const imported = data.recordings || data;
+      let added = 0, merged = 0;
+
+      for (const [label, seqs] of Object.entries(imported)) {
+        if (!Array.isArray(seqs)) continue;
+        if (!recordings[label]) {
+          recordings[label] = seqs;
+          added++;
+        } else {
+          // Merge — add new recordings to existing
+          recordings[label].push(...seqs);
+          merged++;
+        }
+      }
+
+      updateStats();
+      renderSampleList();
+      autosave();
+      document.getElementById('btnExport').disabled = false;
+      document.getElementById('btnClear').disabled  = false;
+
+      const total = Object.values(recordings).reduce((s,v)=>s+v.length,0);
+      setStatus(`Imported! Added ${added} new signs, merged ${merged} existing. Total: ${total} recordings.`, 'ok');
+    } catch(err) {
+      setStatus('Import failed: ' + err.message, 'err');
+    }
+    // Reset file input so same file can be imported again
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+});
+
+// ── Camera permission & init ───────────────────────────────────────────────────
+navigator.mediaDevices.getUserMedia({ video: true, audio: false })
+  .then(stream => {
+    video.srcObject = stream;
+    video.play();
+    setStatus('Loading MediaPipe Holistic (first load takes ~30s)...', '');
+    // Wait for holistic CDN scripts to load
+    const check = setInterval(() => {
+      if (window.Holistic && window.Camera && window.drawConnectors) {
+        clearInterval(check);
+        initHolistic();
+      }
+    }, 500);
+  })
+  .catch(err => setStatus('Camera access denied: ' + err.message, 'err'));
+</script>
+</body>
+</html>

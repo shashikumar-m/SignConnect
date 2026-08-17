@@ -1,0 +1,90 @@
+{
+  "format": "lstm-model",
+  "generatedBy": "SignConnect-LSTM",
+  "modelType": "lstm",
+  "seqLen": 30,
+  "frameSize": 225,
+  "hiddenUnits": 128,
+  "labels": [
+    "OK"
+  ],
+  "weightsManifest": [
+    {
+      "paths": [
+        "group1-shard1of1.bin"
+      ],
+      "weights": [
+        {
+          "name": "lstm/Wx",
+          "shape": [
+            225,
+            512
+          ],
+          "dtype": "float32",
+          "byteOffset": 0,
+          "byteLength": 460800
+        },
+        {
+          "name": "lstm/Wh",
+          "shape": [
+            128,
+            512
+          ],
+          "dtype": "float32",
+          "byteOffset": 460800,
+          "byteLength": 262144
+        },
+        {
+          "name": "lstm/b",
+          "shape": [
+            1,
+            512
+          ],
+          "dtype": "float32",
+          "byteOffset": 722944,
+          "byteLength": 2048
+        },
+        {
+          "name": "dense/W",
+          "shape": [
+            128,
+            64
+          ],
+          "dtype": "float32",
+          "byteOffset": 724992,
+          "byteLength": 32768
+        },
+        {
+          "name": "dense/b",
+          "shape": [
+            1,
+            64
+          ],
+          "dtype": "float32",
+          "byteOffset": 757760,
+          "byteLength": 256
+        },
+        {
+          "name": "out/W",
+          "shape": [
+            64,
+            1
+          ],
+          "dtype": "float32",
+          "byteOffset": 758016,
+          "byteLength": 256
+        },
+        {
+          "name": "out/b",
+          "shape": [
+            1,
+            1
+          ],
+          "dtype": "float32",
+          "byteOffset": 758272,
+          "byteLength": 4
+        }
+      ]
+    }
+  ]
+}
